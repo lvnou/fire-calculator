@@ -34,14 +34,27 @@ class FIREInvestment(FIREBaseClass):
         self._investment_var_df = self._assemble_investment_df(self._investment_opportunities, self._investment_structure_var, self._investments_monthly)
         self._investment_fix_df = self._assemble_investment_df(self._investment_opportunities, self._investment_structure_fix, self._initial_assets)
 
+    @property
+    def investment_var_yearly_growth_perc(self):
+        return self._investment_yearly_growth_perc
 
     @property
     def investment_var_df(self):
         return self._investment_var_df
 
+    @investment_var_df.setter
+    def investment_var_df(self, df):
+        self._investment_var_df = df
+        return self
+
     @property
     def investment_fix_df(self):
         return self._investment_fix_df
+
+    @investment_fix_df.setter
+    def investment_fix_df(self, df):
+        self._investment_fix_df = df
+        return self
 
     @property
     def investment_fix_average_returns(self):
@@ -65,7 +78,7 @@ class FIREInvestment(FIREBaseClass):
         _investment_opp_df = pd.DataFrame(investment_opportunities).T
         _investment_structure_df = pd.DataFrame(investment_structure, columns = ["share", "type"]) 
         _investments_df = pd.merge(_investment_structure_df,_investment_opp_df, left_on="type",right_index=True,how="left")
-        _investments_df["share_total"] = _investments_df.share * total_investments
+        _investments_df["value"] = _investments_df.share * total_investments
         return _investments_df
 
     def plot_portfolio_performance(self, desc, max_time = 10, ref_value = 1000, fig = None, ax = None):
@@ -161,6 +174,102 @@ class FIRESimulation(FIREBaseClass):
     def conditions(self):
         return self._conditions
     
+
+    def _reset_simulation(self):
+        initial_investments = self.investments.investment_fix_df
+        initial_investments = initial_investments[initial_investments.yield_per_year_perc > 0.0]
+        var_investments = self.investments.investment_var_df
+        var_investments_cum = self.investments.investment_var_df.copy()
+        var_investments_cum["value"] = 0
+
+        self._sim_res = {
+                "fixed_invest_valuation" : [],
+                "var_investments_cum_valuation" : [],
+                "var_investments": [],
+                "total_valuation" : [], "fixed_total_valuation":[], "var_total_valuation":[],
+ #          "investment": [investments_monthly],
+          "time" : [],
+          "is_ret": [],
+          "ret_time":None,
+          "taxes_cum" : [0]
+          }
+        
+        self._update_sim_vars(0,initial_investments.copy(), var_investments_cum.copy(), var_investments.copy())
+        
+        return self
+
+    def _calc_sim_aux_vars(self):
+        self._sim_res["fixed_total_valuation"].append(self._sim_res["fixed_invest_valuation"][-1].value.sum())
+        self._sim_res["var_total_valuation"].append(self._sim_res["var_investments_cum_valuation"][-1].value.sum())
+        self._sim_res["total_valuation"].append(self._sim_res["fixed_total_valuation"][-1] + self._sim_res["var_total_valuation"][-1])
+        
+        self._sim_res["is_ret"].append( (self._sim_res["total_valuation"][-1] >= self.target.calc_target_value()) )
+        return self
+
+    def _update_sim_vars(self, time, fixed_invest_valuation, var_investments_cum_valuation, var_investments):
+        self._sim_res["fixed_invest_valuation"].append(fixed_invest_valuation)
+        self._sim_res["var_investments_cum_valuation"].append(var_investments_cum_valuation)
+        self._sim_res["var_investments"].append(var_investments)
+        self._sim_res["time"].append(time)
+        self._calc_sim_aux_vars()
+        return self
+
+    def perform(self, max_time = 70):
+        self._reset_simulation()
+
+#        value_onetime_expense = target_df[target_df.frequency == "ONE_TIME"].value.sum()
+ #       value_yearly_expense = target_df[target_df.frequency == "YEARLY"].value.sum()
+        
+        for p in range(1,1+max_time):
+            #print(sim_res["is_ret"])
+            was_ret = self._sim_res["is_ret"][-1]
+            
+            #v_im1, i_im1 = sim_res["valuation"][-1], sim_res["investment"][-1]
+            vf_im1,vv_im1, i_im1 = self._sim_res["fixed_invest_valuation"][-1], self._sim_res["var_investments_cum_valuation"][-1], self._sim_res["var_investments"][-1]
+            
+            i_i = i_im1.copy()
+            vv_i=vv_im1.copy()
+            vf_i=vf_im1.copy()
+            if was_ret:
+                i_i.value = 0
+                #i_i = 0.0
+                #exp_i = value_yearly_invest
+            else:
+                #i_i = investment_growth_perc/100.*i_im1+i_im1
+                i_i.value = i_i.value *(1+self.investments.investment_var_yearly_growth_perc)
+                exp_i = 0
+            
+            #v_i_yrly_n = i_i*12
+            #v_i_mty = npf.fv(avg_yield/100./12., 12, -i_i, -0, when="begin") ## annualize monthly returns: https://financetrain.com/how-to-annualize-monthly-returns-example
+            i_i["yield_per_month"] = i_i.yield_per_year_perc/100./12.
+            i_i["value_yearly"] = npf.fv(i_i.yield_per_month, 12, -i_i.value, -0, when="begin") ## annualize monthly returns: https://financetrain.com/how-to-annualize-monthly-returns-example
+            
+            vv_i.value = npf.fv(vv_i.yield_per_year_perc/100., 1, -i_i.value_yearly+exp_i, -vv_im1.value, when="end")
+            vf_i.value = npf.fv(vf_i.yield_per_year_perc/100., 1, 0.0, -vf_im1.value, when="end")
+                
+            # taxes
+#            v_tax = capital_tax_rate_perc/100*(v_i-v_im1-v_i_yrly_n)
+#            v_i -= v_tax
+            
+#            is_ret = (v_i>=target_value_total_ret_nom)
+            
+#            if is_ret and not was_ret:
+#                sim_res["ret_time"] = p
+#                v_i -= value_onetime_invest
+            
+#            sim_res["valuation"].append(v_i)
+#            sim_res["investment"].append(i_i
+            self._update_sim_vars(p, vf_i, vv_i, i_i)
+#            sim_res["fixed_invest_valuation"].append(vf_i)
+ #           sim_res["var_investments_cum_valuation"].append(vv_i)
+  #          sim_res["var_investments"].append(i_i)
+ #           sim_res["time"].append(p)
+#            sim_res["is_ret"].append(is_ret or was_ret)
+#            sim_res["taxes_cum"].append(sim_res["taxes_cum"][-1]+v_tax)
+        return self._sim_res
+
+
+
     def plot_growth_rates(self, fig = None, ax = None, perc_thres = 0.5):
         fig, ax = super(FIRESimulation,self).plot(fig, ax)
         avg_yield_real = self.investments.investment_fix_average_returns
@@ -185,13 +294,3 @@ class FIRESimulation(FIREBaseClass):
         ax.set_ylabel("Returns / [%]")
 
         return self
-
-        #total_share = investments_df.share.sum()
-#avg_yield = (investments_df.share * investments_df.yield_per_year_perc).sum() / total_share
-#
-#print(f"Investing {total_share*100}% of {investments_monthly}€ at an average yield of {avg_yield}% per year.")
-#avg_yield -= average_inflation_rate_perc
-#print(f"Considering an average inflation rate of {average_inflation_rate_perc}%, the nominal average yield is {avg_yield}% per year.")
-#print(f"With a withdrawal rate of {withdrawal_rate}%, net gain/loss during retirement each year will be {avg_yield-withdrawal_rate}%.")
-#if avg_yield-withdrawal_rate < 0:
-#    print("WARING: yearly net loss expected during retirement!")
