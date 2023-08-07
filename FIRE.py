@@ -125,7 +125,17 @@ class FIRETarget(FIREBaseClass):
     @property
     def target_value_arr(self):
         return self._target_value_arr
-    
+
+    @property
+    def expenses_fixed_total(self):
+        value_onetime_expense = self._target_df[self._target_df.frequency == "ONE_TIME"].value.sum()
+        return value_onetime_expense
+
+    @property
+    def expenses_variable_yearly(self):
+        value_yearly_expense = self._target_df[self._target_df.frequency == "YEARLY"].value.sum()
+        return value_yearly_expense
+
     def plot_pie_value(self, fig = None, ax = None):
         fig, ax = super(FIRETarget,self).plot(fig, ax)
         target_value_total_ret_nom = self.calc_target_value()
@@ -151,6 +161,14 @@ class FIREExternalConditions(FIREBaseClass):
     @property
     def inflation_rate_average_perc(self):
         return self._average_inflation_rate_perc
+
+    @property
+    def start_age(self):
+        return self._start_age
+
+    @property
+    def capital_tax_rate_perc(self):
+        return self._capital_tax_rate_perc
 
 class FIREExternalConditionsArray(FIREArray):
     def __init__(self, *args, **kwargs):
@@ -186,8 +204,7 @@ class FIRESimulation(FIREBaseClass):
                 "fixed_invest_valuation" : [],
                 "var_investments_cum_valuation" : [],
                 "var_investments": [],
-                "total_valuation" : [], "fixed_total_valuation":[], "var_total_valuation":[],
- #          "investment": [investments_monthly],
+                "total_valuation" : [], "fixed_total_valuation":[], "var_total_valuation":[], "var_valuation": [],
           "time" : [],
           "is_ret": [],
           "ret_time":None,
@@ -201,9 +218,14 @@ class FIRESimulation(FIREBaseClass):
     def _calc_sim_aux_vars(self):
         self._sim_res["fixed_total_valuation"].append(self._sim_res["fixed_invest_valuation"][-1].value.sum())
         self._sim_res["var_total_valuation"].append(self._sim_res["var_investments_cum_valuation"][-1].value.sum())
+        self._sim_res["var_valuation"].append(self._sim_res["var_investments"][-1].value.sum())
         self._sim_res["total_valuation"].append(self._sim_res["fixed_total_valuation"][-1] + self._sim_res["var_total_valuation"][-1])
         
-        self._sim_res["is_ret"].append( (self._sim_res["total_valuation"][-1] >= self.target.calc_target_value()) )
+        if len(self._sim_res["is_ret"]) == 0: was_ret = False
+        else: was_ret = self._sim_res["is_ret"][-1]
+        self._sim_res["is_ret"].append( ((self._sim_res["total_valuation"][-1] >= self.target.calc_target_value()) or was_ret) )
+        if self._sim_res["is_ret"][-1] and not self._sim_res["is_ret"][-2]:
+            self._sim_res["ret_time"] = self._sim_res["time"][-1]
         return self
 
     def _update_sim_vars(self, time, fixed_invest_valuation, var_investments_cum_valuation, var_investments):
@@ -214,12 +236,19 @@ class FIRESimulation(FIREBaseClass):
         self._calc_sim_aux_vars()
         return self
 
+    def _tax_capital_income(self, value_df_i, value_df_im1):
+        v_tax = self.conditions.capital_tax_rate_perc/100*(value_df_i.value - value_df_im1.value)
+        value_df_i.value = value_df_i.value - v_tax
+        return value_df_i
+
     def perform(self, max_time = 70):
         self._reset_simulation()
 
-#        value_onetime_expense = target_df[target_df.frequency == "ONE_TIME"].value.sum()
- #       value_yearly_expense = target_df[target_df.frequency == "YEARLY"].value.sum()
+###        value_onetime_expense = target_df[target_df.frequency == "ONE_TIME"].value.sum()
+### #       value_yearly_expense = target_df[target_df.frequency == "YEARLY"].value.sum()
         
+#        , 
+
         for p in range(1,1+max_time):
             #print(sim_res["is_ret"])
             was_ret = self._sim_res["is_ret"][-1]
@@ -230,25 +259,35 @@ class FIRESimulation(FIREBaseClass):
             i_i = i_im1.copy()
             vv_i=vv_im1.copy()
             vf_i=vf_im1.copy()
+
+            exp_extra_f, exp_extra_v, exp_monthly = 0, 0, 0
             if was_ret:
-                i_i.value = 0
-                #i_i = 0.0
+                exp_monthly = self.target.expenses_variable_yearly / 12.
+                #i_i.value = i_i.value - exp_monthly * i_i.share
+                i_i.value = 0.0
+                if not self._sim_res["is_ret"][-2]:
+                    exp_extra = self.target.expenses_fixed_total
+                    # seperate one-time expense based on share of fixed and variable investment
+                    val_f, val_v = self._sim_res["fixed_total_valuation"][-1], self._sim_res["var_total_valuation"][-1]
+                    exp_extra_f, exp_extra_v = val_f/(val_f+val_v)* exp_extra, val_v/(val_f+val_v)* exp_extra
                 #exp_i = value_yearly_invest
             else:
                 #i_i = investment_growth_perc/100.*i_im1+i_im1
-                i_i.value = i_i.value *(1+self.investments.investment_var_yearly_growth_perc)
-                exp_i = 0
+                i_i.value = i_i.value *(1.+self.investments.investment_var_yearly_growth_perc/100.)
+                #exp_i = 0
             
             #v_i_yrly_n = i_i*12
             #v_i_mty = npf.fv(avg_yield/100./12., 12, -i_i, -0, when="begin") ## annualize monthly returns: https://financetrain.com/how-to-annualize-monthly-returns-example
             i_i["yield_per_month"] = i_i.yield_per_year_perc/100./12.
-            i_i["value_yearly"] = npf.fv(i_i.yield_per_month, 12, -i_i.value, -0, when="begin") ## annualize monthly returns: https://financetrain.com/how-to-annualize-monthly-returns-example
+            i_i["value_yearly"] = npf.fv(i_i.yield_per_month, 12, -i_i.value + exp_monthly, -0, when="begin") ## annualize monthly returns: https://financetrain.com/how-to-annualize-monthly-returns-example
             
-            vv_i.value = npf.fv(vv_i.yield_per_year_perc/100., 1, -i_i.value_yearly+exp_i, -vv_im1.value, when="end")
-            vf_i.value = npf.fv(vf_i.yield_per_year_perc/100., 1, 0.0, -vf_im1.value, when="end")
+            vv_i.value = npf.fv(vv_i.yield_per_year_perc/100., 1, -i_i.value_yearly+exp_extra_v*i_i.share, -vv_im1.value, when="end")
+            vf_i.value = npf.fv(vf_i.yield_per_year_perc/100., 1, 0.0, -vf_im1.value+exp_extra_f*vf_i.share, when="end")
                 
             # taxes
-#            v_tax = capital_tax_rate_perc/100*(v_i-v_im1-v_i_yrly_n)
+            vv_i = self._tax_capital_income(vv_i, vv_im1)
+            vf_i = self._tax_capital_income(vf_i, vf_im1)
+
 #            v_i -= v_tax
             
 #            is_ret = (v_i>=target_value_total_ret_nom)
@@ -292,5 +331,66 @@ class FIRESimulation(FIREBaseClass):
             plt.text(ii, v,f"{v:.2f}%{add_text}", ha = 'center', va='bottom', c=col)
 
         ax.set_ylabel("Returns / [%]")
+
+        return self
+
+    @property
+    def simulation_results(self):
+        return self._sim_res
+
+    def plot_value_over_time(self,fig=None, ax=None):
+        fig, ax = super(FIRESimulation,self).plot(fig, ax)
+        retirement_time, retirement_age = self.simulation_results["ret_time"],self.simulation_results["ret_time"] + self.conditions.start_age
+        if retirement_time is None: ax.set_title(f"FIRE calculation, no retirement in selected time span")    
+        else:   ax.set_title(f"FIRE calculation, retire after {retirement_time} years, age {retirement_age}")
+        time_arr, val_arr = self.simulation_results["time"], self.simulation_results["total_valuation"]
+        ax.plot(time_arr, val_arr, label = "Portfolio value", c="blue")
+        ax.plot(time_arr, [self.target.calc_target_value() for i in time_arr],label = "FIRE target",c="red")
+        if retirement_time is not None:
+            ax.axvline(retirement_time, c="black",ls="--")
+        ax.legend()
+        ax.set_xlabel("Time / [years]")
+        ax.set_ylabel("Value / [€]")
+        
+        ax2=plt.twiny()
+        ax2.plot(np.array(time_arr)+self.conditions.start_age,val_arr,alpha=1)
+        ax2.set_ylabel("Age / [years]")
+        
+        return self
+
+
+    def plot_value_components_over_time(self, fig = None, ax = None):
+        fig, ax = super(FIRESimulation,self).plot(fig, ax)
+        ax.set_title(f"Investment value over time, in components")
+        time_arr, val_arr = self.simulation_results["time"], self.simulation_results["total_valuation"]
+        
+        initial_fixed_value = self.simulation_results["fixed_total_valuation"][0]
+        fixed_value_growth = np.array(self.simulation_results["fixed_total_valuation"]) - initial_fixed_value
+        var_value_cum = np.cumsum(self.simulation_results["var_valuation"]) * 12.
+        #var_value_total = var_value_cum[-1]
+        var_value_growth = np.array(self.simulation_results["var_total_valuation"]) - var_value_cum
+
+        ax.plot(time_arr, val_arr, label = "Total value", c="black")
+
+        ax.plot(time_arr, [initial_fixed_value for i in time_arr], label = "Initial investment", c="blue", alpha = 0.75, ls = "--")
+        ax.plot(time_arr, fixed_value_growth, label = "Growth from initial investment", c="blue", alpha = 0.25, ls = "--")
+        ax.plot(time_arr, self.simulation_results["fixed_total_valuation"], label = "Initial investment, total", c="blue", alpha = 1, ls = "-")
+        
+        ax.plot(time_arr, var_value_cum, label = "Recurring investments", c="red", alpha = 0.75, ls = "--")
+        ax.plot(time_arr, var_value_growth, label = "Growth from recurring investment", c="red", alpha = 0.25, ls = "--")
+        ax.plot(time_arr, self.simulation_results["var_total_valuation"], label = "Recurring investment, total", c="red", alpha = 1, ls = "-")
+        
+        ax.set_xlabel("Time / [years]")
+        ax.set_ylabel("Investment / [€]")
+        ax.legend()
+
+        return self
+
+    def plot_investments_over_time(self, fig = None, ax = None):
+        fig, ax = super(FIRESimulation,self).plot(fig, ax)
+        ax.set_title(f"Montly investments over time ({self.investments.investment_var_yearly_growth_perc}% yearly growth)")
+        ax.plot(self.simulation_results["time"], self.simulation_results["var_valuation"])
+        ax.set_xlabel("Time / [years]")
+        ax.set_ylabel("Investment / [€]")
 
         return self
