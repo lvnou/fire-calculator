@@ -1,3 +1,5 @@
+# -*- coding: utf-8 -*-
+
 import json
 import pandas as pd
 import numpy as np
@@ -89,6 +91,7 @@ class FIREInvestment(FIREBaseClass):
         
         for ii, row in investments_df.iterrows():
             ax.plot( pers, npf.fv(row.yield_per_year_perc/100., pers, 0, -ref_value), ls="-", label = f"{row.type}, growth = {row.yield_per_year_perc:.2f}%" )
+
         ax.plot( pers, npf.fv(avg_yield/100., pers, 0, -ref_value), ls="--", c="black", label = f"Portfolio (weighted average), growth = {avg_yield:.2f}%" )
         ax.legend()
         ax.set_xlabel("Time / [years]")
@@ -271,13 +274,14 @@ class FIRESimulation(FIREBaseClass):
             
             return self._tax_corrected_expense(exp_monthly), (self._tax_corrected_expense(exp_extra_f), self._tax_corrected_expense(exp_extra_v))
 
-    def _recurring_investments(self, was_ret, i_i):
-            if was_ret:
-                i_i.value = 0.0
-            else:
-                i_i.value = i_i.value *(1.+self.investments.investment_var_yearly_growth_perc/100.)
-            i_i["yield_per_month"] = i_i.yield_per_year_perc/100./12.
-            return i_i
+    def _recurring_investments(self, was_ret, i_i, p):
+        if was_ret:
+            i_i.value = 0.0
+        else:
+            growth_perc = self.investments.investment_var_yearly_growth_perc - self.conditions.inflation_rate_average_perc
+            i_i.value = i_i.value *(1.+growth_perc/100.)
+        i_i["yield_per_month"] = i_i.yield_per_year_perc/100./12.
+        return i_i
 
     def perform(self, max_time = 70):
         self._reset_simulation()
@@ -289,7 +293,7 @@ class FIRESimulation(FIREBaseClass):
             i_i = i_im1.copy(); vv_i=vv_im1.copy(); vf_i=vf_im1.copy()
 
             exp_monthly, (exp_extra_f, exp_extra_v) = self._retirement_expenses(was_ret)
-            i_i = self._recurring_investments(was_ret, i_i)
+            i_i = self._recurring_investments(was_ret, i_i, p)
 
             i_i["value_yearly"] = npf.fv(i_i.yield_per_month, 12, -i_i.value + exp_monthly, -0, when="begin") ## annualize monthly returns: https://financetrain.com/how-to-annualize-monthly-returns-example
             
@@ -390,7 +394,7 @@ class FIRESimulation(FIREBaseClass):
 
     def plot_investments_over_time(self, fig = None, ax = None):
         fig, ax = super(FIRESimulation,self).plot(fig, ax)
-        ax.set_title(f"Montly investments over time ({self.investments.investment_var_yearly_growth_perc}% yearly growth)")
+        ax.set_title(f"Monthly investments over time, nominal value\n({self.investments.investment_var_yearly_growth_perc}% yearly growth, {self.conditions.inflation_rate_average_perc}% inflation)")
         ax.plot(self.simulation_results["time"], self.simulation_results["var_valuation"])
         ax.set_xlabel("Time / [years]")
         ax.set_ylabel("Investment / [€]")
