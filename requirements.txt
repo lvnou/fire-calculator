@@ -1,4 +1,5 @@
 numpy
+numpy_financial
 scipy
 pandas
 matplotlib

@@ -29,12 +29,32 @@ class FIREInvestment(FIREBaseClass):
         self._investment_opportunities = setts_dict["investment_opportunities"]
         self._investment_structure_var = setts_dict["investment_structure_var"]
         self._investment_structure_fix = setts_dict["investment_structure_fix"]
-        self._initial_assets = setts_dict["initial_assets"]
-        self._investments_monthly = setts_dict["investments_monthly"]
         self._investment_yearly_growth_perc = setts_dict["investment_var_yearly_growth_perc"]
+        self.investment_fix = setts_dict["initial_assets"]
+        self.investment_monthly = setts_dict["investments_monthly"]
+        
+    @property
+    def investment_monthly(self):
+        return self._investments_monthly
 
+    @investment_monthly.setter
+    def investment_monthly(self, im):
+        self._investments_monthly = im
         self._investment_var_df = self._assemble_investment_df(self._investment_opportunities, self._investment_structure_var, self._investments_monthly)
+        return self
+    
+    def estimate_yearly_income(self, income_tax_rate = 0.5, net_savings_share = 0.45):
+        return self.investment_monthly * 12 / net_savings_share / (1.-income_tax_rate)
+
+    @property
+    def investment_fix(self):
+        return self._initial_assets
+
+    @investment_fix.setter
+    def investment_fix(self, inf):
+        self._initial_assets = inf
         self._investment_fix_df = self._assemble_investment_df(self._investment_opportunities, self._investment_structure_fix, self._initial_assets)
+        return self
 
     @property
     def investment_var_yearly_growth_perc(self):
@@ -360,8 +380,8 @@ class FIRESimulation(FIREBaseClass):
         ax.set_ylabel("Value / [€]")
         
         ax2=plt.twiny()
-        ax2.plot(np.array(time_arr)+self.conditions.start_age,val_arr,alpha=1)
-        ax2.set_ylabel("Age / [years]")
+        ax2.plot(np.array(time_arr)+self.conditions.start_age,val_arr,alpha=0)
+        ax2.set_xlabel("Age / [years]")
         
         return self
 
