@@ -1,0 +1,18 @@
+{
+"SCENARIO_1": {
+
+"investment_opportunities" : {
+ "LOW_RISK" : {"yield_per_year_perc" : 1.0, "total_loss_likely" : false, "description": "Low-risk investments (Bonds/Fonds/…)}"},
+ "AVERAGE_RISK" : {"yield_per_year_perc" : 7.0, "total_loss_likely" : false , "description": "Average-risk investments (Shares/ETF/…)"},
+ "HIGH_RISK" : {"yield_per_year_perc" : 0, "total_loss_likely" : true, "description": "High-risk investments (Crypto, …)"},
+ "CASH" : {"yield_per_year_perc" : 0, "total_loss_likely" : false}
+},
+
+"investment_structure_var" : [[1.0, "AVERAGE_RISK"]],
+"investment_structure_fix" : [[0.2, "LOW_RISK"], [0.8, "AVERAGE_RISK"]],
+
+"initial_assets" : 10000,
+"investments_monthly" : 100,
+"investment_var_yearly_growth_perc" : 1.0
+}
+}

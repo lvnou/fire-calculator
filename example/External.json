@@ -1,0 +1,17 @@
+{
+
+"SCENARIO_AVERAGE_INFLATION_AND_CAPITAL_TAX":{
+"average_inflation_rate_perc" : 2.7,
+"start_age" : 35,
+"capital_tax_rate_perc" : 26.3750,
+"tax_mode": "TAX_ON_REALIZATION"
+},
+
+"SCENARIO_WORSTCASE_INFLATION_AND_CAPITAL_TAX":{
+"average_inflation_rate_perc" : 4.0,
+"start_age" : 35,
+"capital_tax_rate_perc" : 26.3750,
+"tax_mode": "TAX_ALL_GAINS"
+}
+
+}

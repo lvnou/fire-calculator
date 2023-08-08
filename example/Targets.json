@@ -1,0 +1,37 @@
+{
+
+"SCENARIO_INCOME_AGGRESSIVE":{
+"target_value_arr" : {
+        "REGULAR_INCOME" : {"value" : 30000, "frequency": "YEARLY"}
+},
+"withdrawal_rate_perc" : 4
+},
+
+"SCENARIO_INCOME_CONSERVATIVE":{
+"target_value_arr" : {
+        "REGULAR_INCOME" : {"value" : 30000, "frequency": "YEARLY"}
+},
+"withdrawal_rate_perc" : 2
+},
+
+
+"SCENARIO_HOUSEANDCAR_AGGRESSIVE":{
+"target_value_arr" : {
+        "REGULAR_INCOME" : {"value" : 30000, "frequency": "YEARLY"},
+        "HOUSE" : {"value" : 400000, "frequency": "ONE_TIME"},
+        "CAR" : {"value" : 50000, "frequency": "ONE_TIME"}
+},
+"withdrawal_rate_perc" : 4
+},
+
+"SCENARIO_HOUSEANDCAR_CONSERVATIVE":{
+"target_value_arr" : {
+        "REGULAR_INCOME" : {"value" : 30000, "frequency": "YEARLY"},
+        "HOUSE" : {"value" : 400000, "frequency": "ONE_TIME"},
+        "CAR" : {"value" : 50000, "frequency": "ONE_TIME"}
+},
+"withdrawal_rate_perc" : 2
+}
+
+
+}
